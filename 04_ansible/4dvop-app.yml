@@ -1,23 +1,84 @@
----
-
-- hosts: app_vm
+- hosts: all
   become: true
-  tasks:
-    - name: Deploy 4dvop-nginx 
-      docker_container:
-        name: nginx
-        hostname: nginx
-        image: dirane/4dvop-nginx
-        state: started
-        ports:
-          - "8080:8080"
-    - name: Deploy 4dvop-haproxy
-      docker_container:
-        name: haproxy
-        hostname: haproxy 
-        image: dirane/4dvop-haproxy
-        state: started
-        links:  
-          - nginx:nginx
-        ports:
-          - "80:80"
+  tasks: 
+    - name: install epel-release
+      yum: 
+       name: epel-release 
+       state: latest
+    
+    - name: install nginx
+      yum: 
+        name: nginx 
+        state: latest
+
+    - name: install git
+      yum:
+        name: git
+        state: latest
+
+    - name: start nginx every bootup
+      service: name=nginx state=started enabled=yes
+
+    - name: remove default nginx site
+      shell: rm -rf /usr/share/nginx/html/* && rm -rf /usr/share/nginx/html/.git
+      args:
+       warn: no
+
+    - name: clone web site
+      git:
+       repo: https://github.com/diranetafen/static-website-example.git
+       dest: /usr/share/nginx/html/
+
+    - name: configure the firewall 
+      firewalld: 
+       port: 80/udp
+       permanent: yes
+       state: enabled
+       immediate: yes
+
+    - name: configure https
+      firewalld:
+       service: https
+       permanent: yes
+       state: enabled
+       immediate: yes
+
+    - name: configure http
+      firewalld:
+       service: http
+       permanent: yes
+       state: enabled
+       immediate: yes
+
+    - name: firewalld reloaoded to apply changes
+      service:
+       name: firewalld
+       enabled: yes
+       state: reloaded
+
+    - name: nginx listen 8080
+      shell: sed -i 's/listen       80 default_server;/listen       8080 default_server;/g' /etc/nginx/nginx.conf
+      args:
+       warn: no
+            
+    - name: restart nginx
+      shell: nginx -s reload
+
+    - name: install haproxy
+      yum: 
+       name: haproxy
+       state: latest
+
+    - name: start haproxy every bootup
+      service:
+       name: haproxy 
+       state: started 
+       enabled: yes
+    
+    - name: copy haproxy config file
+      copy:
+       src: ./files/haproxy.cfg
+       dest: /etc/haproxy/haproxy.cfg
+ 
+    - name: reload haproxy
+      shell: service haproxy restart 
